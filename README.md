@@ -20,5 +20,8 @@ Daniel Chen
 How to complile and run:
 (ENSURE THAT YOU HAVE G++ compiler installed before running)
 ----------------------------
-    g++ test.cpp test_pid_manager.cpp -o pid_manager_test
-    ./_pid_manager_test
+    g++ test.cpp -o test
+    ./test
+
+    g++ test_pid_manager.cpp -o test_pid_manager
+    ./test_pid_manager
