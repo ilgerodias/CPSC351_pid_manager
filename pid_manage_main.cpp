@@ -16,6 +16,15 @@ static void print_list(const char* tag, const std::vector<int>& pids) {
 }
 
 int main() {
+    //Creating PIPE
+    int pipe_child_to_parent[2];
+    int pipe_parent_to_child[2];
+    if (pipe(pipe_child_to_parent) == -1 || pipe(pipe_parent_to_child) == -1) {
+        perror("pipe");
+        return 1;
+    }
+
+
     std::cout << "PID Manager Demo (OOP + bitmap). Process PID=" << getpid() << "\n";
     std::cout << "Global range: [" << MIN_PID << ", " << MAX_PID << "]\n\n";
 
@@ -68,43 +77,38 @@ int main() {
         return 1;
     } else if (child == 0) {
         // CHILD PROCESS: has its own address space; create its own manager
-        PIDManager childMgr; // independent manager instance (fresh bitmap)
-        if (childMgr.allocate_map() != 1) {
-            std::cerr << "Failed to initialize PID map in child.\n";
-            _exit(2);
-        }
+        close(pipe_child_to_parent[0]); //CLOSING READEND OF CHILD to PARENT PIPE
+        close(pipe_parent_to_child[1]); // CLOSING WRITE END OF PARENT TO CHILD PIPE
 
-        std::vector<int> childPIDs;
-        for (int i = 0; i < 5; ++i) {
-            childPIDs.push_back(childMgr.allocate_pid());
-        }
-
-        std::cout << "[Child  " << getpid() << "] Allocated PIDs: ";
-        print_list("", childPIDs);
-
-        // Release a couple and allocate again to show reuse
-        if (!childPIDs.empty()) {
-            childMgr.release_pid(childPIDs.front());
-            childMgr.release_pid(childPIDs.back());
-            std::cout << "[Child  " << getpid() << "] Released PIDs " << childPIDs.front()
-                      << " and " << childPIDs.back() << "\n";
-            int a = childMgr.allocate_pid();
-            int b = childMgr.allocate_pid();
-            std::cout << "[Child  " << getpid() << "] Re-allocated PIDs: " << a << ", " << b << "\n";
-            if (a != -1) childPIDs.push_back(a);
-            if (b != -1) childPIDs.push_back(b);
-        }
-
-        // Child done
-        std::cout << "[Child  " << getpid() << "] Done. Releasing all its PIDs...\n";
-        for (int pid : childPIDs) {
-            if (pid != -1) {
-                childMgr.release_pid(pid);
+        for (int i =0; i < 5; ++i) {
+            //Send a reuqest to bye to parent, "1" meaning allocate PID
+            char request = 1;
+            if (write(pipe_child_to_parent[1], &request, 1) != 1){
+                perror("write child request");
+                break;
             }
         }
+        // Read allocated PID from parent (int)
+        int allocated_pid = -1;
+            ssize_t r = read(pipe_parent_to_child[0], &allocated_pid, sizeof(allocated_pid));
+            if (r <= 0) {
+                perror("child read pid");
+                
+            }
+            std::cout << "[Child " << getpid() << "] Received PID: " << allocated_pid << "\n";
+
+        
+        close(pipe_child_to_parent[1]); //CLOSING WRITE END OF CHILD TO PARENT PIPE
+        close(pipe_parent_to_child[0]); //CLOSING READ END OF PARENT TO CHILD PIPE
         _exit(0);
     } else {
         // PARENT continues with its manager while child runs
+
+        close(pipe_child_to_parent[1]); // close write end of child's request pipe
+        close(pipe_parent_to_child[0]); // close read end of parent's response pipe
+
+
+
         std::cout << "[Parent " << getpid() << "] Continuing allocations while child runs...\n";
         std::vector<int> moreParent;
         for (int i = 0; i < 2; ++i) {
@@ -112,6 +116,7 @@ int main() {
         }
         std::cout << "[Parent " << getpid() << "] Additional PIDs: ";
         print_list("", moreParent);
+
 
         int status = 0;
         waitpid(child, &status, 0);
@@ -129,6 +134,11 @@ int main() {
             }
         }
         std::cout << "[Parent " << getpid() << "] Done. Released all its PIDs.\n";
+
+        close(pipe_child_to_parent[0]); //CLOSING read end of child's request pipe
+        close(pipe_parent_to_child[1]); //closing write end of parent's response pipe
+
+
     }
 
     return 0;
