@@ -20,7 +20,7 @@ int main() {
     int pipe_child_to_parent[2];
     int pipe_parent_to_child[2];
     if (pipe(pipe_child_to_parent) == -1 || pipe(pipe_parent_to_child) == -1) {
-        perror("pipe");
+        perror("Pipe Error");
         return 1;
     }
 
