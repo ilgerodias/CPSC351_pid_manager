@@ -117,7 +117,17 @@ int main() {
         std::cout << "[Parent " << getpid() << "] Additional PIDs: ";
         print_list("", moreParent);
 
+        char request;
+        while (read(pipe_child_to_parent[0], &request, 1) == 1){ //keeps looping if there is a request
+            int set_pid = parentMgr.allocate_pid();
+            std::cout << "[Parent " << getpid() << "] Allocated PID " << pid << " for child.\n";
 
+            if (write(pipe_parent_to_child[1], &set_pid, 4) != 4){ //writes the PID to the child {
+                perror("parent write pid");
+                break;
+            }
+        }
+        
         int status = 0;
         waitpid(child, &status, 0);
         std::cout << "\n[Parent " << getpid() << "] Child " << child << " exited with status " << status << "\n";
