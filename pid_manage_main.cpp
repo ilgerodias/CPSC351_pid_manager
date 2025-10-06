@@ -35,9 +35,10 @@ int main() {
         return 1;
     }
 
+    int pid;
     std::vector<int> parentPIDs;
     for (int i = 0; i < 3; ++i) {
-        int pid = parentMgr.allocate_pid();
+        pid = parentMgr.allocate_pid();
         parentPIDs.push_back(pid);
     }
     std::cout << "[Parent " << getpid() << "] Allocated initial PIDs: ";
