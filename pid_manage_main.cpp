@@ -81,23 +81,52 @@ int main() {
         close(pipe_child_to_parent[0]); //CLOSING READEND OF CHILD to PARENT PIPE
         close(pipe_parent_to_child[1]); // CLOSING WRITE END OF PARENT TO CHILD PIPE
 
-        for (int i =0; i < 5; ++i) {
-            //Send a reuqest to bye to parent, "1" meaning allocate PID
+        std::vector<int> child_allocated_pids;
+
+        // Request-Receive-Release cycle for multiple PIDs
+        for (int i = 0; i < 3; ++i) {
+            // Send a request to parent, "1" meaning allocate PID
             char request = 1;
             if (write(pipe_child_to_parent[1], &request, 1) != 1){
                 perror("write child request");
                 break;
             }
-        }
-        // Read allocated PID from parent (int)
-        int allocated_pid = -1;
+
+            // Read allocated PID from parent (int)
+            int allocated_pid = -1;
             ssize_t r = read(pipe_parent_to_child[0], &allocated_pid, sizeof(allocated_pid));
             if (r <= 0) {
                 perror("child read pid");
-                
+                break;
             }
-            std::cout << "[Child " << getpid() << "] Received PID: " << allocated_pid << "\n";
+            
+            if (allocated_pid != -1) {
+                child_allocated_pids.push_back(allocated_pid);
+                std::cout << "Hello from child, received PID: " << allocated_pid << "\n";
+            }
+        }
 
+        // Now release all the PIDs we allocated
+        for (int pid_to_release : child_allocated_pids) {
+            // Send release request, "2" meaning release PID
+            char release_request = 2;
+            if (write(pipe_child_to_parent[1], &release_request, 1) != 1) {
+                perror("write child release request");
+                break;
+            }
+            
+            // Send the PID to release
+            if (write(pipe_child_to_parent[1], &pid_to_release, sizeof(pid_to_release)) != sizeof(pid_to_release)) {
+                perror("write pid to release");
+                break;
+            }
+        }
+
+        // Send "Done" command, "3" meaning done
+        char done_request = 3;
+        if (write(pipe_child_to_parent[1], &done_request, 1) == 1) {
+            std::cout << "[Child " << getpid() << "] Sent Done command\n";
+        }
         
         close(pipe_child_to_parent[1]); //CLOSING WRITE END OF CHILD TO PARENT PIPE
         close(pipe_parent_to_child[0]); //CLOSING READ END OF PARENT TO CHILD PIPE
@@ -120,11 +149,27 @@ int main() {
 
         char request;
         while (read(pipe_child_to_parent[0], &request, 1) == 1){ //keeps looping if there is a request
-            int set_pid = parentMgr.allocate_pid();
-            std::cout << "[Parent " << getpid() << "] Allocated PID " << pid << " for child.\n";
+            if (request == 1) {
+                // Handle PID allocation request
+                int set_pid = parentMgr.allocate_pid();
+                std::cout << "[Parent " << getpid() << "] Allocated PID " << set_pid << " for child.\n";
 
-            if (write(pipe_parent_to_child[1], &set_pid, 4) != 4){ //writes the PID to the child {
-                perror("parent write pid");
+                if (write(pipe_parent_to_child[1], &set_pid, sizeof(set_pid)) != sizeof(set_pid)){ //writes the PID to the child
+                    perror("parent write pid");
+                    break;
+                }
+            }
+            else if (request == 2) {
+                // Handle PID release request
+                int pid_to_release;
+                if (read(pipe_child_to_parent[0], &pid_to_release, sizeof(pid_to_release)) == sizeof(pid_to_release)) {
+                    parentMgr.release_pid(pid_to_release);
+                    std::cout << "Parent received request to release PID: " << pid_to_release << "\n";
+                }
+            }
+            else if (request == 3) {
+                // Handle "Done" command
+                std::cout << "[Parent " << getpid() << "] Received Done command. Terminating gracefully.\n";
                 break;
             }
         }
